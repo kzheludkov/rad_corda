@@ -1,8 +1,9 @@
 package com.example.contract;
 
 import com.example.state.PaymentState;
-import net.corda.core.contracts.AuthenticatedObject;
+//import net.corda.core.contracts.AuthenticatedObject;
 import net.corda.core.contracts.CommandData;
+import net.corda.core.contracts.CommandWithParties;
 import net.corda.core.contracts.Contract;
 import net.corda.core.crypto.SecureHash;
 import net.corda.core.identity.AbstractParty;
@@ -26,27 +27,29 @@ import static net.corda.core.contracts.ContractsDSL.requireThat;
  * All contracts must sub-class the [Contract] interface.
  */
 public class PaymentContract implements Contract {
+    public static final String PAYMENT_CONTRACT_ID = "com.example.contract.PaymentContract";
+
     /**
      * The verify() function of all the states' contracts must not throw an exception for a transaction to be
      * considered valid.
      */
     @Override
     public void verify(LedgerTransaction tx) {
-        final AuthenticatedObject<Commands.Create> command = requireSingleCommand(tx.getCommands(), Commands.Create.class);
+        final CommandWithParties<Commands.Create> command = requireSingleCommand(tx.getCommands(), Commands.Create.class);
         requireThat(require -> {
-            // Generic constraints around the Payment transaction.
-            require.using("No inputs should be consumed when issuing an Payment.",
+            // Generic constraints around the IOU transaction.
+            require.using("No inputs should be consumed when issuing an IOU.",
                     tx.getInputs().isEmpty());
             require.using("Only one output state should be created.",
                     tx.getOutputs().size() == 1);
             final PaymentState out = tx.outputsOfType(PaymentState.class).get(0);
-            require.using("The payer and the payee cannot be the same entity.",
+            require.using("The lender and the borrower cannot be the same entity.",
                     out.getPayer() != out.getPayee());
             require.using("All of the participants must be signers.",
                     command.getSigners().containsAll(out.getParticipants().stream().map(AbstractParty::getOwningKey).collect(Collectors.toList())));
 
-            // Payment-specific constraints.
-            require.using("The Payment's amount must be non-negative.",
+            // IOU-specific constraints.
+            require.using("The IOU's value must be non-negative.",
                     out.getPayment().getAmount() > 0);
 
             return null;
@@ -66,8 +69,8 @@ public class PaymentContract implements Contract {
      */
     private final SecureHash legalContractReference = SecureHash.sha256("Payment contract template and params");
 
-    @Override
-    public final SecureHash getLegalContractReference() {
-        return legalContractReference;
-    }
+//    @Override
+//    public final SecureHash getLegalContractReference() {
+//        return legalContractReference;
+//    }
 }

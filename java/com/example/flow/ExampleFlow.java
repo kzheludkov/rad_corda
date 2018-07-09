@@ -4,22 +4,19 @@ import co.paralleluniverse.fibers.Suspendable;
 import com.example.contract.PaymentContract;
 import com.example.model.Payment;
 import com.example.state.PaymentState;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import net.corda.core.contracts.Command;
 import net.corda.core.contracts.ContractState;
-import net.corda.core.contracts.TransactionType;
+import net.corda.core.contracts.UniqueIdentifier;
 import net.corda.core.flows.*;
-import net.corda.core.identity.AbstractParty;
 import net.corda.core.identity.Party;
 import net.corda.core.transactions.SignedTransaction;
 import net.corda.core.transactions.TransactionBuilder;
 import net.corda.core.utilities.ProgressTracker;
 import net.corda.core.utilities.ProgressTracker.Step;
-import net.corda.core.flows.CollectSignaturesFlow;
-import net.corda.core.flows.FinalityFlow;
-import net.corda.core.flows.SignTransactionFlow;
 
-import java.util.stream.Collectors;
-
+import static com.example.contract.PaymentContract.PAYMENT_CONTRACT_ID;
 import static net.corda.core.contracts.ContractsDSL.requireThat;
 
 /**
@@ -38,10 +35,30 @@ public class ExampleFlow {
     @StartableByRPC
     public static class Initiator extends FlowLogic<SignedTransaction> {
 
+        private final String payerName;
         private final String payerAccount;
+        private final String payeeName;
         private final String payeeAccount;
         private final int paymentAmount;
         private final Party otherParty;
+
+        private final Step GENERATING_TRANSACTION = new Step("Generating transaction based on new Payment.");
+        private final Step VERIFYING_TRANSACTION = new Step("Verifying contract constraints.");
+        private final Step SIGNING_TRANSACTION = new Step("Signing transaction with our private key.");
+
+        private final Step GATHERING_SIGS = new Step("Gathering the counterparty's signature.") {
+            @Override
+            public ProgressTracker childProgressTracker() {
+                return CollectSignaturesFlow.Companion.tracker();
+            }
+        };
+
+        private final Step FINALISING_TRANSACTION = new Step("Obtaining notary signature and recording transaction.") {
+            @Override
+            public ProgressTracker childProgressTracker() {
+                return FinalityFlow.Companion.tracker();
+            }
+        };
 
         // The progress tracker checkpoints each stage of the flow and outputs the specified messages when each
         // checkpoint is reached in the code. See the 'progressTracker.currentStep' expressions within the call()
@@ -54,22 +71,10 @@ public class ExampleFlow {
                 FINALISING_TRANSACTION
         );
 
-        private static final Step GENERATING_TRANSACTION = new Step("Generating transaction based on new Payment.");
-        private static final Step VERIFYING_TRANSACTION = new Step("Verifying contract constraints.");
-        private static final Step SIGNING_TRANSACTION = new Step("Signing transaction with our private key.");
-        private static final Step GATHERING_SIGS = new Step("Gathering the counterparty's signature.") {
-            @Override public ProgressTracker childProgressTracker() {
-                return CollectSignaturesFlow.Companion.tracker();
-            }
-        };
-        private static final Step FINALISING_TRANSACTION = new Step("Obtaining notary signature and recording transaction.") {
-            @Override public ProgressTracker childProgressTracker() {
-                return FinalityFlow.Companion.tracker();
-            }
-        };
-
-        public Initiator(String payerAccount, String payeeAccount, int paymentAmount, Party otherParty) {
+        public Initiator(String payerName, String payerAccount, String payeeName, String payeeAccount, int paymentAmount, Party otherParty) {
+            this.payerName = payerName;
             this.payerAccount = payerAccount;
+            this.payeeName = payeeName;
             this.payeeAccount = payeeAccount;
             this.paymentAmount = paymentAmount;
             this.otherParty = otherParty;
@@ -87,20 +92,29 @@ public class ExampleFlow {
         @Override
         public SignedTransaction call() throws FlowException {
             // Obtain a reference to the notary we want to use.
-            final Party notary = getServiceHub().getNetworkMapCache().getNotaryNodes().get(0).getNotaryIdentity();
+            final Party notary = getServiceHub().getNetworkMapCache().getNotaryIdentities().get(0);
 
             // Stage 1.
             progressTracker.setCurrentStep(GENERATING_TRANSACTION);
             // Generate an unsigned transaction.
-            PaymentState paymentState = new PaymentState(new Payment(payerAccount, payeeAccount, paymentAmount), getServiceHub().getMyInfo().getLegalIdentity(), otherParty);
-            final Command txCommand = new Command(new PaymentContract.Commands.Create(),
-                    paymentState.getParticipants().stream().map(AbstractParty::getOwningKey).collect(Collectors.toList()));
-            final TransactionBuilder txBuilder = new TransactionType.General.Builder(notary).withItems(paymentState, txCommand);
+            Party me = getServiceHub().getMyInfo().getLegalIdentities().get(0);
+//            PaymentState payment = new PaymentState(this.payment, me, otherParty, new UniqueIdentifier());
+            PaymentState paymentState = new PaymentState(new Payment(payerName, payerAccount, payeeName, payeeAccount, paymentAmount),
+                    me, otherParty);
+
+            final Command<PaymentContract.Commands.Create> txCommand = new Command<>(
+                    new PaymentContract.Commands.Create(),
+                    ImmutableList.of(paymentState.getPayer().getOwningKey(),
+                            paymentState.getPayee().getOwningKey()));
+
+            final TransactionBuilder txBuilder = new TransactionBuilder(notary)
+                    .addOutputState(paymentState, PAYMENT_CONTRACT_ID)
+                    .addCommand(txCommand);
 
             // Stage 2.
             progressTracker.setCurrentStep(VERIFYING_TRANSACTION);
             // Verify that the transaction is valid.
-            txBuilder.toWireTransaction().toLedgerTransaction(getServiceHub()).verify();
+            txBuilder.verify(getServiceHub());
 
             // Stage 3.
             progressTracker.setCurrentStep(SIGNING_TRANSACTION);
@@ -110,31 +124,34 @@ public class ExampleFlow {
             // Stage 4.
             progressTracker.setCurrentStep(GATHERING_SIGS);
             // Send the state to the counterparty, and receive it back with their signature.
+            FlowSession otherPartySession = initiateFlow(otherParty);
             final SignedTransaction fullySignedTx = subFlow(
-                    new CollectSignaturesFlow(partSignedTx, CollectSignaturesFlow.Companion.tracker()));
+                    new CollectSignaturesFlow(partSignedTx,
+                            ImmutableSet.of(otherPartySession),
+                            CollectSignaturesFlow.Companion.tracker()));
 
             // Stage 5.
             progressTracker.setCurrentStep(FINALISING_TRANSACTION);
             // Notarise and record the transaction in both parties' vaults.
-            return subFlow(new FinalityFlow(fullySignedTx)).get(0);
+            return subFlow(new FinalityFlow(fullySignedTx));
         }
     }
 
     @InitiatedBy(Initiator.class)
     public static class Acceptor extends FlowLogic<SignedTransaction> {
 
-        private final Party otherParty;
+        private final FlowSession otherPartyFlow;
 
-        public Acceptor(Party otherParty) {
-            this.otherParty = otherParty;
+        public Acceptor(FlowSession otherPartyFlow) {
+            this.otherPartyFlow = otherPartyFlow;
         }
 
         @Suspendable
         @Override
         public SignedTransaction call() throws FlowException {
-            class signTxFlow extends SignTransactionFlow {
-                private signTxFlow(Party otherParty, ProgressTracker progressTracker) {
-                    super(otherParty, progressTracker);
+            class SignTxFlow extends SignTransactionFlow {
+                private SignTxFlow(FlowSession otherPartyFlow, ProgressTracker progressTracker) {
+                    super(otherPartyFlow, progressTracker);
                 }
 
                 @Override
@@ -143,14 +160,13 @@ public class ExampleFlow {
                         ContractState output = stx.getTx().getOutputs().get(0).getData();
                         require.using("This must be an Payment transaction.", output instanceof PaymentState);
                         PaymentState paymentState = (PaymentState) output;
-                        //TODO
-                        require.using("The Payment's amount can't be too high.", paymentState.getPayment().getAmount() < 100);
+                        require.using("I won't accept Payments with a value over 100.", paymentState.getPayment().getAmount() <= 100);
                         return null;
                     });
                 }
             }
 
-            return subFlow(new signTxFlow(otherParty, SignTransactionFlow.Companion.tracker()));
+            return subFlow(new SignTxFlow(otherPartyFlow, SignTransactionFlow.Companion.tracker()));
         }
     }
 }

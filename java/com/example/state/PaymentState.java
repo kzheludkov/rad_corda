@@ -1,6 +1,5 @@
 package com.example.state;
 
-import com.example.contract.PaymentContract;
 import com.example.model.Payment;
 import com.example.schema.PaymentSchemaV1;
 import com.google.common.collect.ImmutableList;
@@ -10,20 +9,12 @@ import net.corda.core.identity.AbstractParty;
 import net.corda.core.identity.Party;
 import net.corda.core.schemas.MappedSchema;
 import net.corda.core.schemas.PersistentState;
-import net.corda.core.schemas.PersistentStateRef;
 import net.corda.core.schemas.QueryableState;
+import org.jetbrains.annotations.NotNull;
 
-import java.security.PublicKey;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Stream;
-
-import static java.util.stream.Collectors.toList;
-import static net.corda.core.crypto.CryptoUtils.getKeys;
-
-// TODO: Implement QueryableState and add ORM code (to match Kotlin example).
 
 /**
  * The state object recording Payment agreements between two parties.
@@ -35,7 +26,6 @@ public class PaymentState implements LinearState, QueryableState {
     private final Party payer;
     private final Party payee;
     private final UniqueIdentifier linearId;
-    private final PaymentContract contract = new PaymentContract();
 
     /**
      * @param payment details of the Payment.
@@ -64,11 +54,6 @@ public class PaymentState implements LinearState, QueryableState {
     }
 
     @Override
-    public PaymentContract getContract() {
-        return contract;
-    }
-
-    @Override
     public UniqueIdentifier getLinearId() {
         return linearId;
     }
@@ -79,56 +64,28 @@ public class PaymentState implements LinearState, QueryableState {
     }
 
     @Override
-    public Iterable<MappedSchema> supportedSchemas() {
-        return ImmutableList.of(new PaymentSchemaV1());
-    }
-
-    @Override
     public PersistentState generateMappedObject(MappedSchema mappedSchema) {
         if (mappedSchema instanceof PaymentSchemaV1) {
-            PersistentStateRef stateRef = null; // where I could get PersistentStateRef
 
             UUID linearId = this.linearId.getId();
-            String transactionId = "";
-            int outputIndex = 0;
             String payerParty = payer.getName().toString();
-            String payerName = "";
+            String payerName = payment.getPayerName();
             String payerAccount = payment.getPayerAccount();
             String payeeParty = payee.getName().toString();
-            String payeeName = "";
+            String payeeName = payment.getPayeeName();
             String payeeAccount = payment.getPayeeAccount();
             int paymentAmount = payment.getAmount();
 
-            return new PaymentSchemaV1.PersistantPayment(stateRef, linearId, transactionId, outputIndex, payerParty,
+            return new PaymentSchemaV1.PersistantPayment(linearId, payerParty,
                     payerName, payerAccount, payeeParty, payeeName, payeeAccount, paymentAmount);
         } else {
             throw new IllegalArgumentException(String.format("Unsupported schema: %s", mappedSchema.getName()));
         }
     }
 
-    /**
-     * This returns true if the state should be tracked by the vault of a particular node. In this case the logic is
-     * simple; track this state if we are one of the involved parties.
-     */
+    @NotNull
     @Override
-    public boolean isRelevant(Set<? extends PublicKey> ourKeys) {
-        final List<PublicKey> partyKeys = Stream.of(payer, payee)
-                .flatMap(party -> getKeys(party.getOwningKey()).stream())
-                .collect(toList());
-        return ourKeys
-                .stream()
-                .anyMatch(partyKeys::contains);
-
-    }
-
-    @Override
-    public String toString() {
-        return "PaymentState{" +
-                "payment=" + payment +
-                ", payer=" + payer +
-                ", payee=" + payee +
-                ", linearId=" + linearId +
-                ", contract=" + contract +
-                '}';
+    public Iterable<MappedSchema> supportedSchemas() {
+        return ImmutableList.of(new PaymentSchemaV1());
     }
 }

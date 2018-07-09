@@ -3,12 +3,13 @@ package com.example.plugin;
 import com.example.api.ExampleApi;
 import com.example.flow.ExampleFlow;
 import com.example.state.PaymentState;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import net.corda.core.identity.Party;
 import net.corda.core.messaging.CordaRPCOps;
-import net.corda.core.node.PluginServiceHub;
+//import net.corda.core.node.PluginServiceHub;
 import net.corda.webserver.services.WebServerPluginRegistry;
 
 import java.util.Collections;
@@ -39,5 +40,10 @@ public class ExamplePlugin implements WebServerPluginRegistry {
     @Override
     public Map<String, String> getStaticServeDirs() {
         return staticServeDirs;
+    }
+
+    @Override
+    public void customizeJSONSerialization(ObjectMapper om) {
+
     }
 }

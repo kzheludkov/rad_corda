@@ -11,12 +11,22 @@ import net.corda.core.serialization.CordaSerializable;
  */
 @CordaSerializable
 public class Payment {
+    private String payerName;
     private String payerAccount;
+    private String payeeName;
     private String payeeAccount;
     private int amount;
 
+    public String getPayerName() {
+        return payerName;
+    }
+
     public String getPayerAccount() {
         return payerAccount;
+    }
+
+    public String getPayeeName() {
+        return payeeName;
     }
 
     public String getPayeeAccount() {
@@ -27,8 +37,10 @@ public class Payment {
         return amount;
     }
 
-    public Payment(String payerAccount, String payeeAccount, int amount) {
+    public Payment(String payerName, String payerAccount, String payeeName, String payeeAccount, int amount) {
+        this.payerName = payerName;
         this.payerAccount = payerAccount;
+        this.payeeName = payeeName;
         this.payeeAccount = payeeAccount;
         this.amount = amount;
     }

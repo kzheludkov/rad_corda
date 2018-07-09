@@ -10,10 +10,6 @@ import javax.persistence.Entity;
 import javax.persistence.Table;
 import java.util.UUID;
 
-/**
- * Created by konstzhe on 7/6/18.
- * PaymentSchemaV1
- */
 public class PaymentSchemaV1 extends MappedSchema {
 
     private static int schemaVersion = 1;
@@ -29,35 +25,35 @@ public class PaymentSchemaV1 extends MappedSchema {
         @Column(name = "linear_id")
         private final UUID linearId;
 
-        @Column(name = "transaction_id")
-        private final String transactionId;
-        @Column(name = "output_index")
-        private final int outputIndex;
+        @Column(name = "transaction_id", insertable = false, updatable = false)
+        private final String transactionId="";
 
-        @Column(name = "r3_payer_party")
+        @Column(name = "output_index", insertable = false, updatable = false)
+        private final int outputIndex=0;
+
+        @Column(name = "payer_party")
         private final String payerParty;
-        @Column(name = "r3_payer_name")
+        @Column(name = "payer_name")
         private final String payerName;
-        @Column(name = "r3_payer_account")
+        @Column(name = "payer_account")
         private final String payerAccount;
 
-        @Column(name = "r3_payee_party")
+        @Column(name = "payee_party")
         private final String payeeParty;
-        @Column(name = "r3_payee_name")
+        @Column(name = "payee_name")
         private final String payeeName;
-        @Column(name = "r3_payee_account")
+        @Column(name = "payee_account")
         private final String payeeAccount;
 
-        @Column(name = "r3_payment_amount")
+        @Column(name = "payment_amount")
         private final int paymentAmount;
 
-        public PersistantPayment(PersistentStateRef stateRef, UUID linearId, String transactionId, int outputIndex,
+        public PersistantPayment(UUID linearId,
                                  String payerParty, String payerName, String payerAccount, String payeeParty,
                                  String payeeName, String payeeAccount, int paymentAmount) {
-            super(stateRef);
             this.linearId = linearId;
-            this.transactionId = stateRef != null ? stateRef.getTxId() : transactionId;
-            this.outputIndex = stateRef != null && stateRef.getIndex() != null ? stateRef.getIndex() : outputIndex;
+//            this.transactionId = stateRef != null ? stateRef.getTxId() : transactionId;
+//            this.outputIndex = stateRef != null && stateRef.getIndex() != null ? stateRef.getIndex() : outputIndex;
             this.payerParty = payerParty;
             this.payerName = payerName;
             this.payerAccount = payerAccount;
@@ -107,5 +103,4 @@ public class PaymentSchemaV1 extends MappedSchema {
             return paymentAmount;
         }
     }
-
 }
